@@ -710,8 +710,15 @@ class JdSmartClient:
             except JdSmartDecryptError:
                 self._wangyin_session = None
                 if attempt == 0:
-                    LOGGER.debug("JD Smart Wangyin decrypt failed; retrying")
+                    LOGGER.warning(
+                        "JD Smart Wangyin decrypt failed; retrying once: path=%s",
+                        path,
+                    )
                     continue
+                LOGGER.warning(
+                    "JD Smart Wangyin decrypt failed after retry: path=%s",
+                    path,
+                )
                 raise
             except JdSmartError as err:
                 self._wangyin_session = None
