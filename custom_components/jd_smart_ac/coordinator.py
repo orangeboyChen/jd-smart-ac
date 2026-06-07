@@ -10,6 +10,7 @@ from datetime import datetime
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.components import persistent_notification
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 import homeassistant.util.dt as dt_util
@@ -30,6 +31,7 @@ from .const import (
     FAST_POLL_DURATION,
     FAST_POLL_INTERVAL,
     LOGGER,
+    UPDATE_AUTH_FAILURE_THRESHOLD,
 )
 
 type JdSmartConfigEntry = ConfigEntry[JdSmartRuntimeData]
@@ -42,6 +44,7 @@ class JdSmartRuntimeData:
     client: JdSmartClient
     coordinator: JdSmartCoordinator
     feed_id: str
+    device_name: str | None = None
 
 
 class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
@@ -68,31 +71,38 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
         self.feed_id = feed_id
         self._fast_poll_cancel: Callable[[], None] | None = None
         self._token_refresh_lock = asyncio.Lock()
+        self._consecutive_update_failures = 0
 
     async def _async_update_data(self) -> JdSmartSnapshot:
         """Fetch latest snapshot."""
         digest = self.data.digest if self.data else ""
         try:
-            return await self.client.async_get_snapshot(self.feed_id, digest)
-        except JdSmartAuthError as err:
+            snapshot = await self.client.async_get_snapshot(self.feed_id, digest)
+            self._consecutive_update_failures = 0
+            return snapshot
+        except JdSmartAuthError:
             LOGGER.info("JD Smart snapshot authentication failed; refreshing token")
             try:
                 await self._async_refresh_token()
-                return await self.client.async_get_snapshot(self.feed_id, digest)
+                snapshot = await self.client.async_get_snapshot(self.feed_id, digest)
+                self._consecutive_update_failures = 0
+                return snapshot
             except JdSmartAuthError as refresh_err:
+                self._async_create_reauth_notification()
                 raise ConfigEntryAuthFailed from refresh_err
             except JdSmartCannotConnectError as refresh_err:
                 if self.data is None:
                     raise ConfigEntryNotReady from refresh_err
-                raise UpdateFailed("Unable to update JD Smart") from refresh_err
+                await self._async_handle_update_failure(refresh_err)
             except JdSmartError as refresh_err:
-                raise UpdateFailed("Unable to update JD Smart") from refresh_err
+                await self._async_handle_update_failure(refresh_err)
         except JdSmartCannotConnectError as err:
             if self.data is None:
                 raise ConfigEntryNotReady from err
-            raise UpdateFailed("Unable to update JD Smart") from err
+            await self._async_handle_update_failure(err)
         except JdSmartError as err:
-            raise UpdateFailed("Unable to update JD Smart") from err
+            await self._async_handle_update_failure(err)
+        raise UpdateFailed("Unable to update JD Smart")
 
     async def async_control_streams(self, commands: dict[str, object]) -> None:
         """Control streams and refresh state."""
@@ -113,6 +123,7 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
                     commands,
                 )
             except JdSmartAuthError as refresh_err:
+                self._async_create_reauth_notification()
                 raise ConfigEntryAuthFailed from refresh_err
             except JdSmartError as refresh_err:
                 LOGGER.warning(
@@ -152,6 +163,39 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
                     CONF_COOKIE: new_cookie,
                 },
             )
+
+    async def _async_handle_update_failure(self, err: JdSmartError) -> None:
+        """Handle repeated update failures."""
+        self._consecutive_update_failures += 1
+        if self._consecutive_update_failures >= UPDATE_AUTH_FAILURE_THRESHOLD:
+            LOGGER.warning(
+                "JD Smart update failed repeatedly; requesting reauthentication: "
+                "feed_id=%s, failures=%s",
+                self.feed_id,
+                self._consecutive_update_failures,
+            )
+            self._async_create_reauth_notification()
+            raise ConfigEntryAuthFailed from err
+        raise UpdateFailed("Unable to update JD Smart") from err
+
+    @callback
+    def _async_create_reauth_notification(self) -> None:
+        """Create a persistent reauth notification."""
+        persistent_notification.async_create(
+            self.hass,
+            (
+                "JD Smart could not update the device data several times. "
+                "Open Settings > Devices & services and reauthenticate JD Smart."
+            ),
+            title="JD Smart authentication required",
+            notification_id=f"{DOMAIN}_{self.feed_id}_reauth",
+        )
+
+    def async_shutdown(self) -> None:
+        """Cancel pending coordinator callbacks."""
+        if self._fast_poll_cancel:
+            self._fast_poll_cancel()
+            self._fast_poll_cancel = None
 
     @callback
     def trigger_fast_polling(self) -> None:

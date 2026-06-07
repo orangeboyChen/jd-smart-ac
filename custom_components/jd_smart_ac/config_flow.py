@@ -16,6 +16,7 @@ from .api import (
     JdSmartCannotConnectError,
     JdSmartClient,
     JdSmartCredentials,
+    JdSmartDevice,
     JdSmartDeviceProfile,
     JdSmartError,
 )
@@ -23,6 +24,7 @@ from .const import (
     CONF_APP_VERSION,
     CONF_CHANNEL,
     CONF_COOKIE,
+    CONF_DEVICE_NAME,
     CONF_DEVICE_ID,
     CONF_DEVICE_MODEL,
     CONF_FEED_ID,
@@ -34,6 +36,7 @@ from .const import (
     CONF_USER_AGENT,
     DEFAULT_APP_VERSION,
     DEFAULT_CHANNEL,
+    DEFAULT_DEVICE_ID,
     DEFAULT_DEVICE_MODEL,
     DEFAULT_PLATFORM,
     DEFAULT_PLATFORM_VERSION,
@@ -42,13 +45,14 @@ from .const import (
     LOGGER,
 )
 
+CONF_SELECTED_DEVICE = "selected_device"
+
 
 def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     """Return config schema."""
     defaults = defaults or {}
     return vol.Schema(
         {
-            vol.Required(CONF_FEED_ID, default=defaults.get(CONF_FEED_ID, "")): str,
             vol.Required(CONF_COOKIE, default=defaults.get(CONF_COOKIE, "")): str,
             vol.Required(CONF_TGT, default=defaults.get(CONF_TGT, "")): str,
             vol.Optional(CONF_PIN, default=defaults.get(CONF_PIN, "")): str,
@@ -89,7 +93,7 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
 def _clean_input(user_input: dict[str, Any]) -> dict[str, Any]:
     """Clean user input and fill defaults."""
     data = {key: value for key, value in user_input.items() if value != ""}
-    data.setdefault(CONF_DEVICE_ID, str(secrets.randbelow(10**20)))
+    data.setdefault(CONF_DEVICE_ID, DEFAULT_DEVICE_ID or str(secrets.randbelow(10**20)))
     data.setdefault(CONF_PLATFORM, DEFAULT_PLATFORM)
     data.setdefault(CONF_APP_VERSION, DEFAULT_APP_VERSION)
     data.setdefault(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL)
@@ -99,9 +103,9 @@ def _clean_input(user_input: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
-    """Validate input by fetching a snapshot."""
-    client = JdSmartClient(
+def _client_from_data(hass: HomeAssistant, data: dict[str, Any]) -> JdSmartClient:
+    """Build an API client from config flow data."""
+    return JdSmartClient(
         async_get_clientsession(hass),
         JdSmartCredentials(
             cookie=data[CONF_COOKIE],
@@ -119,6 +123,26 @@ async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
             user_agent=data[CONF_USER_AGENT],
         ),
     )
+
+
+async def _fetch_devices(
+    hass: HomeAssistant, data: dict[str, Any]
+) -> list[JdSmartDevice]:
+    """Validate auth by fetching selectable devices."""
+    client = _client_from_data(hass, data)
+    try:
+        return await client.async_get_devices()
+    except JdSmartAuthError:
+        LOGGER.info("JD Smart device-list auth failed; refreshing token")
+        new_tgt, new_cookie = await client.async_refresh_token()
+        data[CONF_TGT] = new_tgt
+        data[CONF_COOKIE] = new_cookie
+        return await client.async_get_devices()
+
+
+async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
+    """Validate input by fetching a snapshot."""
+    client = _client_from_data(hass, data)
     try:
         await client.async_get_snapshot(data[CONF_FEED_ID])
     except JdSmartAuthError:
@@ -133,6 +157,8 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for JD Smart."""
 
     VERSION = 1
+    _auth_data: dict[str, Any]
+    _devices: list[JdSmartDevice]
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -141,9 +167,8 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             data = _clean_input(user_input)
-            self._async_abort_entries_match({CONF_FEED_ID: data[CONF_FEED_ID]})
             try:
-                await _validate_input(self.hass, data)
+                devices = await _fetch_devices(self.hass, data)
             except JdSmartAuthError:
                 errors["base"] = "invalid_auth"
             except JdSmartCannotConnectError:
@@ -154,16 +179,44 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
                 LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                await self.async_set_unique_id(data[CONF_FEED_ID])
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=f"JD Smart {data[CONF_FEED_ID]}",
-                    data=data,
-                )
+                self._auth_data = data
+                self._devices = devices
+                return await self.async_step_select_device()
 
         return self.async_show_form(
             step_id="user",
             data_schema=_schema(user_input),
+            errors=errors,
+        )
+
+    async def async_step_select_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle device selection."""
+        errors: dict[str, str] = {}
+        devices = getattr(self, "_devices", [])
+        if user_input is not None:
+            feed_id = user_input[CONF_SELECTED_DEVICE]
+            device = next(
+                (item for item in devices if item.feed_id == feed_id),
+                None,
+            )
+            if device is None:
+                errors["base"] = "unknown"
+            else:
+                data = {
+                    **self._auth_data,
+                    CONF_FEED_ID: device.feed_id,
+                    CONF_DEVICE_NAME: device.name,
+                }
+                await self.async_set_unique_id(device.feed_id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=device.name, data=data)
+
+        choices = {device.feed_id: _device_label(device) for device in devices}
+        return self.async_show_form(
+            step_id="select_device",
+            data_schema=vol.Schema({vol.Required(CONF_SELECTED_DEVICE): vol.In(choices)}),
             errors=errors,
         )
 
@@ -178,7 +231,7 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reauth_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
-            data = _clean_input({**entry.data, **user_input})
+            data = {**entry.data, **_clean_input(user_input)}
             try:
                 await _validate_input(self.hass, data)
             except JdSmartAuthError:
@@ -196,3 +249,10 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=_schema(entry.data),
             errors=errors,
         )
+
+
+def _device_label(device: JdSmartDevice) -> str:
+    """Return a readable device option label."""
+    details = [value for value in (device.room_name, device.category_name) if value]
+    suffix = f" - {' / '.join(details)}" if details else ""
+    return f"{device.name}{suffix} ({device.feed_id})"

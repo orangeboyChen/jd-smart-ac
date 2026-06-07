@@ -27,10 +27,11 @@ MODE_TO_HVAC = {
 HVAC_TO_MODE = {value: key for key, value in MODE_TO_HVAC.items()}
 
 FAN_TO_VALUE = {
+    "silent": "0",
     "low": "1",
     "medium": "2",
     "high": "3",
-    "auto": "4",
+    "auto": "5",
 }
 VALUE_TO_FAN = {value: key for key, value in FAN_TO_VALUE.items()}
 

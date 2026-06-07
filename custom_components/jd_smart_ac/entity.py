@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ATTR_MANUFACTURER, DOMAIN
+from .const import ATTR_MANUFACTURER, CONF_DEVICE_NAME, DOMAIN
 from .coordinator import JdSmartCoordinator
 
 
@@ -21,7 +21,9 @@ class JdSmartEntity(CoordinatorEntity[JdSmartCoordinator]):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.feed_id)},
             manufacturer=ATTR_MANUFACTURER,
-            name=f"JD Smart {coordinator.feed_id}",
+            name=coordinator.config_entry.data.get(
+                CONF_DEVICE_NAME, f"JD Smart {coordinator.feed_id}"
+            ),
         )
 
     @property

@@ -1,6 +1,5 @@
 {
     "config": {
-        "title": "京东小家",
         "abort": {
             "already_configured": "设备已经配置"
         },
@@ -17,7 +16,6 @@
                     "cookie": "Cookie",
                     "device_id": "设备 ID",
                     "device_model": "设备型号",
-                    "feed_id": "Feed ID",
                     "pin": "PIN",
                     "platform": "平台",
                     "platform_version": "平台版本",
@@ -34,7 +32,6 @@
                     "cookie": "Cookie",
                     "device_id": "设备 ID",
                     "device_model": "设备型号",
-                    "feed_id": "Feed ID",
                     "pin": "PIN",
                     "platform": "平台",
                     "platform_version": "平台版本",
@@ -48,7 +45,6 @@
                     "cookie": "从京东小家 App 抓包复制的 Cookie。",
                     "device_id": "公开请求中的 device_id。留空则自动生成。",
                     "device_model": "请求中的 hard_platform/appplatform 值。",
-                    "feed_id": "空调的 feed_id。",
                     "pin": "可选京东账号 PIN，用于刷新 token。",
                     "platform": "可用抓包中的 plat 原值。",
                     "platform_version": "请求中的 plat_version/appplatformversion 值。",
@@ -56,7 +52,13 @@
                     "tgt": "京东 App 的 A2/wskey/tgt token。",
                     "user_agent": "可用抓包中的 User-Agent。"
                 },
-                "description": "输入京东小家 App 抓包中的空调信息。"
+                "description": "输入京东小家 App 抓包中的认证信息。集成会在认证后自动拉取设备列表。"
+            },
+            "select_device": {
+                "data": {
+                    "selected_device": "设备"
+                },
+                "description": "选择要添加的空调设备。"
             }
         }
     },
@@ -70,7 +72,8 @@
                             "auto": "自动",
                             "high": "高风",
                             "low": "低风",
-                            "medium": "中风"
+                            "medium": "中风",
+                            "silent": "静音"
                         }
                     },
                     "preset_mode": {
@@ -139,8 +142,8 @@
             "display": {
                 "name": "屏显"
             },
-            "eco": {
-                "name": "节能"
+            "powerful": {
+                "name": "强力"
             }
         }
     }

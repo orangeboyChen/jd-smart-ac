@@ -13,7 +13,7 @@ This repository is for users who own an air conditioner controlled through the J
 ## Features
 
 - Climate entity for power, HVAC mode, target temperature, fan speed, vertical swing, and sleep preset.
-- Switch entities for backlight, display, and eco mode.
+- Switch entities for backlight, display, and powerful mode.
 - Select entity for horizontal swing direction.
 - Sensor entities for current temperature, humidity, and diagnostic values.
 - Config flow UI.
@@ -123,7 +123,7 @@ The request `User-Agent` header.
 
 The climate entity supports power, HVAC mode, target temperature, current temperature, current humidity, fan speed, vertical swing, and sleep preset. The target temperature range is 18-32 C with 1 C steps.
 
-Switch entities include backlight, display, and eco mode.
+Switch entities include backlight, display, and powerful mode.
 
 The select entity controls horizontal swing direction.
 

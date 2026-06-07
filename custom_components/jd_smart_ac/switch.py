@@ -28,7 +28,9 @@ SWITCHES: tuple[JdSmartSwitchDescription, ...] = (
     JdSmartSwitchDescription(
         key="scrdispaly", stream_id="scrdispaly", translation_key="display"
     ),
-    JdSmartSwitchDescription(key="ecomode", stream_id="ecomode", translation_key="eco"),
+    JdSmartSwitchDescription(
+        key="ecomode", stream_id="ecomode", translation_key="powerful"
+    ),
 )
 
 

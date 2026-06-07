@@ -15,16 +15,28 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from aiohttp import ClientError, ClientResponseError, ClientSession
+from cryptography.hazmat.primitives import hashes, padding as crypto_padding
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+try:
+    from cryptography.hazmat.decrepit.ciphers.algorithms import (
+        TripleDES as TripleDESAlgorithm,
+    )
+except ImportError:
+    TripleDESAlgorithm = algorithms.TripleDES
 
 from .const import (
     APP_KEY,
-CONTROL_PATH,
+    CONTROL_PATH,
     DEFAULT_APP_VERSION,
     DEFAULT_CHANNEL,
     DEFAULT_DEVICE_MODEL,
     DEFAULT_PLATFORM,
     DEFAULT_PLATFORM_VERSION,
     DEFAULT_USER_AGENT,
+    DEVICE_LIST_PATH,
     HMAC_KEY,
     JD_SMART_BASE_URL,
     LOGGER,
@@ -38,6 +50,11 @@ WJLOGIN_SDK_VERSION = "12.0.10"
 WJLOGIN_RANDOM_KEY_ALPHABET = (
     "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
+WANGYIN_HANDSHAKE_URL = "http://aks.jdpay.com/handshake"
+WANGYIN_SEED_WRAP_KEY = bytes.fromhex(
+    "1234567890ABCDEF1234567890ABCDEF"
+    "1234567890ABCDEF1234567890ABCDEF"
+)
 
 
 class JdSmartError(Exception):
@@ -50,6 +67,10 @@ class JdSmartAuthError(JdSmartError):
 
 class JdSmartCannotConnectError(JdSmartError):
     """Raised when the cloud cannot be reached."""
+
+
+class JdSmartDecryptError(JdSmartCannotConnectError):
+    """Raised when Wangyin encrypted payload cannot be decrypted by server."""
 
 
 class JdSmartControlError(JdSmartError):
@@ -108,6 +129,26 @@ class JdSmartSnapshot:
         )
 
 
+@dataclass(slots=True)
+class JdSmartDevice:
+    """JD Smart device entry."""
+
+    feed_id: str
+    name: str
+    device_id: str | None = None
+    category_name: str | None = None
+    room_name: str | None = None
+    version: str | None = None
+
+
+@dataclass(slots=True)
+class _WangyinSession:
+    """Wangyin handshake session."""
+
+    context: bytes
+    data_key: bytes
+
+
 def _json_dumps(data: Any) -> str:
     """Dump compact JSON."""
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
@@ -149,6 +190,74 @@ def build_authorization(
     )
     signature = hmac.new(HMAC_KEY.encode(), source.encode(), hashlib.sha1).digest()
     return f"smart {APP_KEY}:::{base64.b64encode(signature).decode()}:::{timestamp}"
+
+
+def _pkcs7_pad(data: bytes) -> bytes:
+    """Pad bytes for AES block encryption."""
+    padder = crypto_padding.PKCS7(128).padder()
+    return padder.update(data) + padder.finalize()
+
+
+def _aes_256_ecb_encrypt(data: bytes, key: bytes, *, pad: bool) -> bytes:
+    """Encrypt bytes with AES-256-ECB."""
+    plain = _pkcs7_pad(data) if pad else data
+    encryptor = Cipher(algorithms.AES(key), modes.ECB()).encryptor()
+    return encryptor.update(plain) + encryptor.finalize()
+
+
+def _aes_256_ecb_decrypt(data: bytes, key: bytes) -> bytes:
+    """Decrypt bytes with AES-256-ECB without unpadding."""
+    decryptor = Cipher(algorithms.AES(key), modes.ECB()).decryptor()
+    return decryptor.update(data) + decryptor.finalize()
+
+
+def _triple_des_ecb_decrypt(data: bytes, key: bytes) -> bytes:
+    """Decrypt bytes with 3DES-ECB without unpadding."""
+    decryptor = Cipher(TripleDESAlgorithm(key), modes.ECB()).decryptor()
+    return decryptor.update(data) + decryptor.finalize()
+
+
+def _wangyin_token(key: bytes, plain_length: int) -> str:
+    """Build the 8-digit Wangyin packet token."""
+    key_first_24 = key[:24]
+    derived_24 = _triple_des_ecb_decrypt(key_first_24, key_first_24)
+    digest = hmac.new(
+        derived_24,
+        plain_length.to_bytes(8, "big"),
+        hashlib.sha256,
+    ).digest()
+    offset = digest[31] & 0x0F
+    value = (
+        ((digest[offset] & 0x7F) << 24)
+        | (digest[offset + 1] << 16)
+        | (digest[offset + 2] << 8)
+        | digest[offset + 3]
+    )
+    return str(value % 100000000).zfill(8)
+
+
+def _encrypted_body_json(encrypted_body: str) -> str:
+    """Build the encrypted body wrapper used by the app."""
+    return '{\n  "body" : "' + encrypted_body.replace("/", "\\/") + '"\n}'
+
+
+def _encode_wangyin_session(plain_text: str, session: _WangyinSession) -> str:
+    """Encode plaintext with an established Wangyin handshake session."""
+    plain = plain_text.encode()
+    encrypted_plain = _aes_256_ecb_encrypt(plain, session.data_key, pad=True)
+    header = bytearray(b"0" * 0x84)
+    header[0:4] = (1).to_bytes(4, "little")
+    header[4:8] = (0x3EB).to_bytes(4, "little")
+    header[8:12] = len(encrypted_plain).to_bytes(4, "little")
+    header[0x0C:0x14] = _wangyin_token(session.data_key, len(plain)).encode()
+    header[0x14:0x64] = session.context
+    digest = hmac.new(
+        session.data_key[:24],
+        bytes(header) + encrypted_plain,
+        hashlib.sha256,
+    ).digest()
+    header[0x64:0x84] = digest
+    return base64.b64encode(bytes(header) + encrypted_plain).decode()
 
 
 def _u32(value: int) -> int:
@@ -475,20 +584,21 @@ class JdSmartClient:
         self._session = session
         self.credentials = credentials
         self.profile = profile
+        self._wangyin_session: _WangyinSession | None = None
 
     def _public_query(self) -> dict[str, str]:
         """Build public query parameters."""
         return {
             "plat": self.profile.platform,
-            "hard_platform": self.profile.device_model,
             "app_version": self.profile.app_version,
+            "hard_platform": self.profile.device_model,
             "plat_version": self.profile.platform_version,
             "device_id": self.profile.device_id,
             "channel": self.profile.channel,
         }
 
     def _headers(
-        self, raw_body: str, *, content_type: str = "application/json"
+        self, raw_body: str, *, content_type: str = "application/json; charset=utf-8"
     ) -> dict[str, str]:
         """Build common headers."""
         authorization = build_authorization("POST", raw_body, self.profile)
@@ -496,16 +606,117 @@ class JdSmartClient:
             "Content-Type": content_type,
             "Authorization": authorization,
             "Cookie": self.credentials.cookie,
+            "Accept": "*/*",
             "tgt": self.credentials.tgt,
             "app_identity": "WL",
             "appversion": self.profile.app_version,
             "appplatform": self.profile.device_model,
             "appplatformversion": self.profile.platform_version,
             "User-Agent": self.profile.user_agent,
+            "ef": "1",
         }
         if self.credentials.sgm_context:
             headers["Sgm-Context"] = self.credentials.sgm_context
         return headers
+
+    async def _async_start_wangyin_handshake(self) -> _WangyinSession:
+        """Start a Wangyin handshake and return a session."""
+        private_key = ec.generate_private_key(ec.SECP256K1())
+        private_scalar = private_key.private_numbers().private_value.to_bytes(32, "big")
+        public_key = private_key.public_key().public_bytes(
+            encoding=Encoding.X962,
+            format=PublicFormat.CompressedPoint,
+        )
+        encrypted_private_key = _aes_256_ecb_encrypt(
+            private_scalar, WANGYIN_SEED_WRAP_KEY, pad=False
+        )
+        record = bytearray(b"0" * 0x106)
+        record[0:4] = (1).to_bytes(4, "little")
+        record[4:8] = (0x3E9).to_bytes(4, "little")
+        record[0x84:0xC4] = encrypted_private_key.hex().upper().encode()
+        record[0xC4:0x106] = public_key.hex().upper().encode()
+
+        try:
+            async with self._session.post(
+                WANGYIN_HANDSHAKE_URL,
+                data=base64.b64encode(bytes(record)).decode(),
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Host": "aks.jdpay.com:80",
+                    "wpe": "jdjr",
+                },
+            ) as response:
+                text = await response.text()
+                if response.status != HTTPStatus.OK:
+                    raise JdSmartCannotConnectError(
+                        f"Wangyin handshake HTTP status: {response.status}"
+                    )
+        except (ClientError, TimeoutError) as err:
+            raise JdSmartCannotConnectError("Unable to reach Wangyin handshake") from err
+
+        try:
+            decoded = base64.b64decode(text)
+        except ValueError as err:
+            raise JdSmartCannotConnectError("Invalid Wangyin handshake response") from err
+        if len(decoded) < 0x106:
+            raise JdSmartCannotConnectError("Wangyin handshake response too short")
+        code = int.from_bytes(decoded[4:8], "little")
+        if code != 0x3EA:
+            raise JdSmartCannotConnectError(f"Wangyin handshake failed: {code}")
+
+        context = bytearray(decoded[0x14:0x64])
+        encrypted_scalar = bytes.fromhex(decoded[0x84:0xC4].decode())
+        server_scalar = _aes_256_ecb_decrypt(encrypted_scalar, WANGYIN_SEED_WRAP_KEY)
+        server_public_key = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP256K1(), bytes.fromhex(decoded[0xC4:0x106].decode())
+        )
+        server_private_key = ec.derive_private_key(
+            int.from_bytes(server_scalar, "big"), ec.SECP256K1()
+        )
+        shared_secret = server_private_key.exchange(ec.ECDH(), server_public_key)
+        digest = hashes.Hash(hashes.SHA256())
+        digest.update(shared_secret)
+        data_key = digest.finalize()
+        context[0x30:0x50] = _aes_256_ecb_encrypt(
+            data_key, WANGYIN_SEED_WRAP_KEY, pad=False
+        )
+        LOGGER.debug("JD Smart Wangyin handshake succeeded")
+        return _WangyinSession(bytes(context), data_key)
+
+    async def _async_wangyin_encode(self, plain_text: str) -> str:
+        """Encode text with a cached Wangyin session."""
+        if self._wangyin_session is None:
+            self._wangyin_session = await self._async_start_wangyin_handshake()
+        return _encode_wangyin_session(plain_text, self._wangyin_session)
+
+    async def _request_wangyin_json(
+        self,
+        path: str,
+        raw_body: str,
+    ) -> dict[str, Any]:
+        """POST a Wangyin-encrypted request."""
+        for attempt in range(2):
+            raw_query = _json_dumps(self._public_query())
+            ep = await self._async_wangyin_encode(raw_query)
+            encrypted_body = await self._async_wangyin_encode(raw_body)
+            wrapped_body = _encrypted_body_json(encrypted_body)
+            url = f"{JD_SMART_BASE_URL}{path}?ep={quote(ep, safe='')}"
+            try:
+                return await self._request_json(
+                    url,
+                    wrapped_body,
+                    headers=self._headers(raw_body),
+                )
+            except JdSmartDecryptError:
+                self._wangyin_session = None
+                if attempt == 0:
+                    LOGGER.debug("JD Smart Wangyin decrypt failed; retrying")
+                    continue
+                raise
+            except JdSmartError as err:
+                self._wangyin_session = None
+                raise err
+        raise JdSmartDecryptError("Wangyin decrypt failed")
 
     async def _request_json(
         self,
@@ -552,6 +763,9 @@ class JdSmartClient:
             payload = json.loads(text)
         except json.JSONDecodeError as err:
             raise JdSmartCannotConnectError("Invalid JSON response") from err
+
+        if str(payload.get("code", "")) == "604":
+            raise JdSmartDecryptError(payload.get("msg", "Wangyin decrypt failed"))
 
         error = payload.get("error")
         if error:
@@ -621,6 +835,17 @@ class JdSmartClient:
         LOGGER.info("JD Smart token refresh succeeded: same_token=%s", same_token)
         return new_tgt, new_cookie
 
+    async def async_get_devices(self) -> list[JdSmartDevice]:
+        """Fetch selectable JD Smart devices."""
+        raw_body = _json_dumps({"json": {"version": "2.0"}})
+        payload = await self._request_wangyin_json(DEVICE_LIST_PATH, raw_body)
+        result = payload.get("result")
+        data = json.loads(result) if isinstance(result, str) else result
+        devices = _parse_devices(data)
+        if not devices:
+            raise JdSmartError("No JD Smart devices found")
+        return devices
+
     async def async_get_snapshot(
         self,
         feed_id: str,
@@ -651,7 +876,7 @@ class JdSmartClient:
             "version": "2.0",
             "feed_id": feed_id,
             "command": [
-                {"stream_id": stream_id, "current_value": value}
+                {"stream_id": stream_id, "current_value": str(value)}
                 for stream_id, value in commands.items()
             ],
         }
@@ -664,21 +889,13 @@ class JdSmartClient:
     ) -> JdSmartSnapshot | None:
         """Control device streams."""
         raw_body = self._control_body(feed_id, commands)
-        url = (
-            f"{JD_SMART_BASE_URL}{CONTROL_PATH}"
-            f"?{urlencode(self._public_query())}"
-        )
         LOGGER.info(
             "JD Smart control command: feed_id=%s, commands=%s",
             feed_id,
             commands,
         )
 
-        payload = await self._request_json(
-            url,
-            raw_body,
-            headers=self._headers(raw_body),
-        )
+        payload = await self._request_wangyin_json(CONTROL_PATH, raw_body)
         result = json.loads(payload["result"])
         LOGGER.info(
             "JD Smart control result: feed_id=%s, control_ret=%s, "
@@ -708,3 +925,65 @@ def _truncate(value: str, limit: int = 1000) -> str:
     if len(value) <= limit:
         return value
     return f"{value[:limit]}..."
+
+
+def _parse_devices(data: Any) -> list[JdSmartDevice]:
+    """Parse device entries from a nested device-list response."""
+    devices: list[JdSmartDevice] = []
+    seen: set[str] = set()
+
+    def visit(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+            return
+        if not isinstance(value, dict):
+            return
+
+        feed_id = value.get("feed_id", value.get("feedId"))
+        is_device = (
+            feed_id is not None
+            or value.get("device_id") is not None
+            or value.get("deviceId") is not None
+            or value.get("card_name") is not None
+            or value.get("cardName") is not None
+        )
+        if is_device and feed_id is not None:
+            feed_id_text = str(feed_id)
+            if feed_id_text not in seen:
+                seen.add(feed_id_text)
+                name = (
+                    value.get("card_name")
+                    or value.get("cardName")
+                    or value.get("name")
+                    or value.get("device_name")
+                    or value.get("deviceName")
+                    or feed_id_text
+                )
+                devices.append(
+                    JdSmartDevice(
+                        feed_id=feed_id_text,
+                        name=str(name),
+                        device_id=_optional_str(
+                            value.get("device_id", value.get("deviceId"))
+                        ),
+                        category_name=_optional_str(
+                            value.get("category_name", value.get("categoryName"))
+                        ),
+                        room_name=_optional_str(
+                            value.get("room_name", value.get("roomName"))
+                        ),
+                        version=_optional_str(value.get("version")),
+                    )
+                )
+
+        for child in value.values():
+            visit(child)
+
+    visit(data)
+    return devices
+
+
+def _optional_str(value: Any) -> str | None:
+    """Return value as a string if present."""
+    return None if value is None else str(value)

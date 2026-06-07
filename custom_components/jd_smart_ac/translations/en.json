@@ -1,6 +1,5 @@
 {
     "config": {
-        "title": "JD Smart",
         "abort": {
             "already_configured": "Device is already configured"
         },
@@ -17,7 +16,6 @@
                     "cookie": "Cookie",
                     "device_id": "Device ID",
                     "device_model": "Device model",
-                    "feed_id": "Feed ID",
                     "pin": "PIN",
                     "platform": "Platform",
                     "platform_version": "Platform version",
@@ -34,7 +32,6 @@
                     "cookie": "Cookie",
                     "device_id": "Device ID",
                     "device_model": "Device model",
-                    "feed_id": "Feed ID",
                     "pin": "PIN",
                     "platform": "Platform",
                     "platform_version": "Platform version",
@@ -48,7 +45,6 @@
                     "cookie": "Cookie copied from the JD Smart app capture.",
                     "device_id": "Public request device_id. Leave empty to generate one.",
                     "device_model": "Request hard_platform/appplatform value.",
-                    "feed_id": "The air conditioner feed_id.",
                     "pin": "Optional JD account PIN, used for token refresh.",
                     "platform": "Exact request plat value from the working capture.",
                     "platform_version": "Request plat_version/appplatformversion value.",
@@ -56,7 +52,13 @@
                     "tgt": "The JD app A2/wskey/tgt token.",
                     "user_agent": "User-Agent from the working capture."
                 },
-                "description": "Enter JD Smart app capture data for the air conditioner."
+                "description": "Enter JD Smart app capture data. The integration will fetch your devices after authentication."
+            },
+            "select_device": {
+                "data": {
+                    "selected_device": "Device"
+                },
+                "description": "Select the air conditioner to add."
             }
         }
     },
@@ -70,7 +72,8 @@
                             "auto": "Auto",
                             "high": "High",
                             "low": "Low",
-                            "medium": "Medium"
+                            "medium": "Medium",
+                            "silent": "Silent"
                         }
                     },
                     "preset_mode": {
@@ -139,8 +142,8 @@
             "display": {
                 "name": "Display"
             },
-            "eco": {
-                "name": "Eco"
+            "powerful": {
+                "name": "Powerful"
             }
         }
     }
