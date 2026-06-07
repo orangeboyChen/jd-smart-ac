@@ -1,0 +1,147 @@
+{
+    "config": {
+        "title": "京东小家",
+        "abort": {
+            "already_configured": "设备已经配置"
+        },
+        "error": {
+            "cannot_connect": "连接失败",
+            "invalid_auth": "认证无效",
+            "unknown": "未知错误"
+        },
+        "step": {
+            "reauth_confirm": {
+                "data": {
+                    "app_version": "应用版本",
+                    "channel": "渠道",
+                    "cookie": "Cookie",
+                    "device_id": "设备 ID",
+                    "device_model": "设备型号",
+                    "feed_id": "Feed ID",
+                    "pin": "PIN",
+                    "platform": "平台",
+                    "platform_version": "平台版本",
+                    "sgm_context": "Sgm-Context",
+                    "tgt": "TGT",
+                    "user_agent": "User-Agent"
+                },
+                "description": "更新京东小家认证信息。"
+            },
+            "user": {
+                "data": {
+                    "app_version": "应用版本",
+                    "channel": "渠道",
+                    "cookie": "Cookie",
+                    "device_id": "设备 ID",
+                    "device_model": "设备型号",
+                    "feed_id": "Feed ID",
+                    "pin": "PIN",
+                    "platform": "平台",
+                    "platform_version": "平台版本",
+                    "sgm_context": "Sgm-Context",
+                    "tgt": "TGT",
+                    "user_agent": "User-Agent"
+                },
+                "data_description": {
+                    "app_version": "可用抓包中的应用版本。",
+                    "channel": "可用抓包中的请求渠道。",
+                    "cookie": "从京东小家 App 抓包复制的 Cookie。",
+                    "device_id": "公开请求中的 device_id。留空则自动生成。",
+                    "device_model": "请求中的 hard_platform/appplatform 值。",
+                    "feed_id": "空调的 feed_id。",
+                    "pin": "可选京东账号 PIN，用于刷新 token。",
+                    "platform": "可用抓包中的 plat 原值。",
+                    "platform_version": "请求中的 plat_version/appplatformversion 值。",
+                    "sgm_context": "可用抓包中的 Sgm-Context 请求头，可选。",
+                    "tgt": "京东 App 的 A2/wskey/tgt token。",
+                    "user_agent": "可用抓包中的 User-Agent。"
+                },
+                "description": "输入京东小家 App 抓包中的空调信息。"
+            }
+        }
+    },
+    "entity": {
+        "climate": {
+            "air_conditioner": {
+                "name": "空调",
+                "state_attributes": {
+                    "fan_mode": {
+                        "state": {
+                            "auto": "自动",
+                            "high": "高风",
+                            "low": "低风",
+                            "medium": "中风"
+                        }
+                    },
+                    "preset_mode": {
+                        "state": {
+                            "child": "儿童睡眠",
+                            "elderly": "老人睡眠",
+                            "normal": "一般睡眠",
+                            "off": "关闭",
+                            "youth": "青年睡眠"
+                        }
+                    },
+                    "swing_mode": {
+                        "state": {
+                            "auto": "自动",
+                            "direction_1": "风向 1",
+                            "direction_2": "风向 2",
+                            "direction_3": "风向 3",
+                            "direction_4": "风向 4",
+                            "direction_5": "风向 5",
+                            "direction_6": "风向 6",
+                            "swing": "扫风"
+                        }
+                    }
+                }
+            }
+        },
+        "select": {
+            "horizontal_direction": {
+                "name": "左右风",
+                "state": {
+                    "direct": "定向",
+                    "swing": "扫风"
+                }
+            }
+        },
+        "sensor": {
+            "clean_runtime": {
+                "name": "清洁累计时间"
+            },
+            "current_humidity": {
+                "name": "当前湿度"
+            },
+            "current_temperature": {
+                "name": "当前温度"
+            },
+            "mdp_mode": {
+                "name": "MDP 模式"
+            },
+            "protection_state": {
+                "name": "保护状态"
+            },
+            "runtime_total": {
+                "name": "运行总时长"
+            },
+            "speaker_raw": {
+                "name": "蜂鸣器原始值"
+            },
+            "tvoc": {
+                "name": "TVOC"
+            }
+        },
+        "switch": {
+            "backlight": {
+                "name": "背光灯"
+            },
+            "display": {
+                "name": "屏显"
+            },
+            "eco": {
+                "name": "节能"
+            }
+        }
+    }
+}

@@ -1,0 +1,147 @@
+{
+    "config": {
+        "title": "JD Smart",
+        "abort": {
+            "already_configured": "Device is already configured"
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "reauth_confirm": {
+                "data": {
+                    "app_version": "App version",
+                    "channel": "Channel",
+                    "cookie": "Cookie",
+                    "device_id": "Device ID",
+                    "device_model": "Device model",
+                    "feed_id": "Feed ID",
+                    "pin": "PIN",
+                    "platform": "Platform",
+                    "platform_version": "Platform version",
+                    "sgm_context": "Sgm-Context",
+                    "tgt": "TGT",
+                    "user_agent": "User-Agent"
+                },
+                "description": "Update JD Smart authentication data."
+            },
+            "user": {
+                "data": {
+                    "app_version": "App version",
+                    "channel": "Channel",
+                    "cookie": "Cookie",
+                    "device_id": "Device ID",
+                    "device_model": "Device model",
+                    "feed_id": "Feed ID",
+                    "pin": "PIN",
+                    "platform": "Platform",
+                    "platform_version": "Platform version",
+                    "sgm_context": "Sgm-Context",
+                    "tgt": "TGT",
+                    "user_agent": "User-Agent"
+                },
+                "data_description": {
+                    "app_version": "App version from the working capture.",
+                    "channel": "Request channel from the working capture.",
+                    "cookie": "Cookie copied from the JD Smart app capture.",
+                    "device_id": "Public request device_id. Leave empty to generate one.",
+                    "device_model": "Request hard_platform/appplatform value.",
+                    "feed_id": "The air conditioner feed_id.",
+                    "pin": "Optional JD account PIN, used for token refresh.",
+                    "platform": "Exact request plat value from the working capture.",
+                    "platform_version": "Request plat_version/appplatformversion value.",
+                    "sgm_context": "Optional Sgm-Context header from a working capture.",
+                    "tgt": "The JD app A2/wskey/tgt token.",
+                    "user_agent": "User-Agent from the working capture."
+                },
+                "description": "Enter JD Smart app capture data for the air conditioner."
+            }
+        }
+    },
+    "entity": {
+        "climate": {
+            "air_conditioner": {
+                "name": "Air conditioner",
+                "state_attributes": {
+                    "fan_mode": {
+                        "state": {
+                            "auto": "Auto",
+                            "high": "High",
+                            "low": "Low",
+                            "medium": "Medium"
+                        }
+                    },
+                    "preset_mode": {
+                        "state": {
+                            "child": "Child sleep",
+                            "elderly": "Elderly sleep",
+                            "normal": "Normal sleep",
+                            "off": "Off",
+                            "youth": "Youth sleep"
+                        }
+                    },
+                    "swing_mode": {
+                        "state": {
+                            "auto": "Auto",
+                            "direction_1": "Direction 1",
+                            "direction_2": "Direction 2",
+                            "direction_3": "Direction 3",
+                            "direction_4": "Direction 4",
+                            "direction_5": "Direction 5",
+                            "direction_6": "Direction 6",
+                            "swing": "Swing"
+                        }
+                    }
+                }
+            }
+        },
+        "select": {
+            "horizontal_direction": {
+                "name": "Horizontal direction",
+                "state": {
+                    "direct": "Direct",
+                    "swing": "Swing"
+                }
+            }
+        },
+        "sensor": {
+            "clean_runtime": {
+                "name": "Clean runtime"
+            },
+            "current_humidity": {
+                "name": "Current humidity"
+            },
+            "current_temperature": {
+                "name": "Current temperature"
+            },
+            "mdp_mode": {
+                "name": "MDP mode"
+            },
+            "protection_state": {
+                "name": "Protection state"
+            },
+            "runtime_total": {
+                "name": "Runtime total"
+            },
+            "speaker_raw": {
+                "name": "Speaker raw"
+            },
+            "tvoc": {
+                "name": "TVOC"
+            }
+        },
+        "switch": {
+            "backlight": {
+                "name": "Backlight"
+            },
+            "display": {
+                "name": "Display"
+            },
+            "eco": {
+                "name": "Eco"
+            }
+        }
+    }
+}

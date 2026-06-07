@@ -1,0 +1,11 @@
+{
+  "domain": "jd_smart_ac",
+  "name": "JD Smart",
+  "codeowners": ["@orangeboyChen"],
+  "config_flow": true,
+  "documentation": "https://github.com/orangeboyChen/jd-smart-ac",
+  "issue_tracker": "https://github.com/orangeboyChen/jd-smart-ac/issues",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "version": "0.1.0"
+}

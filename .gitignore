@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+.vscode/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+
+# Local Home Assistant data and secrets
+config/
+secrets.yaml
+known_devices.yaml
+home-assistant.log*
+
+# Packet captures often contain tokens and cookies. Do not commit them.
+*.har
+*.pcap
+*.pcapng
+*.chls
+*.txt
+dumpDex/
