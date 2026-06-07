@@ -2,14 +2,23 @@
     "config": {
         "abort": {
             "already_configured": "Device is already configured",
+            "auth_refreshed": "JD Smart authentication was refreshed successfully.",
+            "auth_updated": "JD Smart authentication was updated successfully.",
             "no_devices": "No new air conditioners were found. Already configured devices are hidden."
         },
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
+            "token_refresh_failed": "Authentication refresh failed. Check the notification for details or enter new authentication data manually.",
             "unknown": "Unexpected error"
         },
         "step": {
+            "action": {
+                "data": {
+                    "action": "Action"
+                },
+                "description": "Choose how to continue with JD Smart."
+            },
             "reauth_confirm": {
                 "data": {
                     "app_version": "App version",
@@ -60,6 +69,15 @@
                     "selected_devices": "Devices"
                 },
                 "description": "Select one or more air conditioners to add. Already configured devices are hidden."
+            }
+        }
+    },
+    "selector": {
+        "action": {
+            "options": {
+                "add_device": "Add devices",
+                "manual_auth": "Manually enter authentication",
+                "refresh_auth": "Refresh authentication"
             }
         }
     },

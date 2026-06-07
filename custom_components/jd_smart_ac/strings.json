@@ -2,14 +2,23 @@
   "config": {
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "auth_refreshed": "JD Smart authentication was refreshed successfully.",
+      "auth_updated": "JD Smart authentication was updated successfully.",
       "no_devices": "No new air conditioners were found. Already configured devices are hidden."
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "token_refresh_failed": "Authentication refresh failed. Check the notification for details or enter new authentication data manually.",
       "unknown": "[%key:common::config_flow::error::unknown%]"
     },
     "step": {
+      "action": {
+        "data": {
+          "action": "Action"
+        },
+        "description": "Choose how to continue with JD Smart."
+      },
       "user": {
         "data": {
           "app_version": "App version",
@@ -60,6 +69,15 @@
           "user_agent": "User-Agent"
         },
         "description": "Update JD Smart authentication data."
+      }
+    }
+  },
+  "selector": {
+    "action": {
+      "options": {
+        "add_device": "Add devices",
+        "manual_auth": "Manually enter authentication",
+        "refresh_auth": "Refresh authentication"
       }
     }
   },

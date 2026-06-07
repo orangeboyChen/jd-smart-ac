@@ -7,10 +7,11 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import selector
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import (
     JdSmartAuthError,
@@ -20,6 +21,7 @@ from .api import (
     JdSmartDevice,
     JdSmartDeviceProfile,
     JdSmartError,
+    JdSmartTokenRefreshError,
 )
 from .const import (
     CONF_APP_VERSION,
@@ -47,7 +49,43 @@ from .const import (
     LOGGER,
 )
 
+ACTION_ADD_DEVICE = "add_device"
+ACTION_MANUAL_AUTH = "manual_auth"
+ACTION_REFRESH_AUTH = "refresh_auth"
+AUTH_KEYS = (
+    CONF_COOKIE,
+    CONF_TGT,
+    CONF_PIN,
+    CONF_SGM_CONTEXT,
+    CONF_DEVICE_ID,
+    CONF_PLATFORM,
+    CONF_APP_VERSION,
+    CONF_DEVICE_MODEL,
+    CONF_PLATFORM_VERSION,
+    CONF_CHANNEL,
+    CONF_USER_AGENT,
+)
+CONF_ACTION = "action"
 CONF_SELECTED_DEVICES = "selected_devices"
+
+
+def _action_schema() -> vol.Schema:
+    """Return add-service action schema."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_ACTION): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        ACTION_MANUAL_AUTH,
+                        ACTION_REFRESH_AUTH,
+                        ACTION_ADD_DEVICE,
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key=CONF_ACTION,
+                )
+            )
+        }
+    )
 
 
 def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
@@ -127,6 +165,19 @@ def _client_from_data(hass: HomeAssistant, data: dict[str, Any]) -> JdSmartClien
     )
 
 
+async def _refresh_auth(hass: HomeAssistant, data: dict[str, Any]) -> None:
+    """Refresh auth data and persist refreshed values into data."""
+    try:
+        new_tgt, new_cookie = await _client_from_data(
+            hass, data
+        ).async_refresh_token()
+    except JdSmartTokenRefreshError as err:
+        _notify_token_refresh_failed(hass, err)
+        raise
+    data[CONF_TGT] = new_tgt
+    data[CONF_COOKIE] = new_cookie
+
+
 async def _fetch_devices(
     hass: HomeAssistant, data: dict[str, Any]
 ) -> list[JdSmartDevice]:
@@ -136,23 +187,8 @@ async def _fetch_devices(
         return await client.async_get_devices()
     except JdSmartAuthError:
         LOGGER.info("JD Smart device-list auth failed; refreshing token")
-        new_tgt, new_cookie = await client.async_refresh_token()
-        data[CONF_TGT] = new_tgt
-        data[CONF_COOKIE] = new_cookie
-        return await client.async_get_devices()
-
-
-async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
-    """Validate input by fetching a snapshot."""
-    client = _client_from_data(hass, data)
-    try:
-        await client.async_get_snapshot(data[CONF_FEED_ID])
-    except JdSmartAuthError:
-        LOGGER.info("JD Smart config validation auth failed; refreshing token")
-        new_tgt, new_cookie = await client.async_refresh_token()
-        data[CONF_TGT] = new_tgt
-        data[CONF_COOKIE] = new_cookie
-        await client.async_get_snapshot(data[CONF_FEED_ID])
+        await _refresh_auth(hass, data)
+        return await _client_from_data(hass, data).async_get_devices()
 
 
 class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -161,16 +197,49 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
     _auth_data: dict[str, Any]
     _devices: list[JdSmartDevice]
+    _target_entry: Any | None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the initial step."""
+        if self._async_current_entries() and user_input is None:
+            return await self.async_step_action()
+        return await self.async_step_manual_auth(user_input)
+
+    async def async_step_action(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle add-service action selection."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            action = user_input[CONF_ACTION]
+            if action == ACTION_MANUAL_AUTH:
+                return await self.async_step_manual_auth()
+            if action == ACTION_ADD_DEVICE:
+                return await self.async_step_add_device()
+            if action == ACTION_REFRESH_AUTH:
+                return await self.async_step_refresh_auth()
+            errors["base"] = "unknown"
+
+        return self.async_show_form(
+            step_id="action",
+            data_schema=_action_schema(),
+            errors=errors,
+        )
+
+    async def async_step_manual_auth(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle manual authentication input."""
         errors: dict[str, str] = {}
         if user_input is not None:
             data = _clean_input(user_input)
             try:
+                await _refresh_auth(self.hass, data)
                 devices = await _fetch_devices(self.hass, data)
+            except JdSmartTokenRefreshError:
+                errors["base"] = "token_refresh_failed"
             except JdSmartAuthError:
                 errors["base"] = "invalid_auth"
             except JdSmartCannotConnectError:
@@ -181,7 +250,12 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
                 LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
+                if self._async_current_entries():
+                    await self._async_update_auth_entries(data)
+                    return self.async_abort(reason="auth_updated")
+
                 self._auth_data = data
+                self._target_entry = None
                 configured_feed_ids = _configured_feed_ids(self._async_current_entries())
                 self._devices = [
                     device
@@ -197,6 +271,77 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=_schema(user_input),
             errors=errors,
         )
+
+    async def async_step_refresh_auth(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Refresh authentication for existing entries."""
+        entry = _primary_entry(self._async_current_entries())
+        if entry is None:
+            return await self.async_step_manual_auth()
+
+        try:
+            data = dict(entry.data)
+            await _refresh_auth(self.hass, data)
+        except JdSmartTokenRefreshError as err:
+            LOGGER.error("JD Smart token refresh failed from config flow: %s", err)
+            return self.async_show_form(
+                step_id="action",
+                data_schema=_action_schema(),
+                errors={"base": "token_refresh_failed"},
+                description_placeholders={"reason": str(err)},
+            )
+
+        await self._async_update_auth_entries(data)
+        return self.async_abort(reason="auth_refreshed")
+
+    async def async_step_add_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Fetch devices with existing auth and add new devices."""
+        entry = _primary_entry(self._async_current_entries())
+        if entry is None:
+            return await self.async_step_manual_auth()
+
+        data = dict(entry.data)
+        try:
+            devices = await _fetch_devices(self.hass, data)
+        except JdSmartTokenRefreshError:
+            return self.async_show_form(
+                step_id="action",
+                data_schema=_action_schema(),
+                errors={"base": "token_refresh_failed"},
+            )
+        except JdSmartAuthError:
+            return self.async_show_form(
+                step_id="action",
+                data_schema=_action_schema(),
+                errors={"base": "invalid_auth"},
+            )
+        except JdSmartCannotConnectError:
+            return self.async_show_form(
+                step_id="action",
+                data_schema=_action_schema(),
+                errors={"base": "cannot_connect"},
+            )
+        except JdSmartError:
+            return self.async_show_form(
+                step_id="action",
+                data_schema=_action_schema(),
+                errors={"base": "cannot_connect"},
+            )
+
+        if _auth_changed(entry.data, data):
+            await self._async_update_auth_entries(data)
+        self._auth_data = data
+        self._target_entry = entry
+        configured_feed_ids = _configured_feed_ids(self._async_current_entries())
+        self._devices = [
+            device for device in devices if device.feed_id not in configured_feed_ids
+        ]
+        if not self._devices:
+            return self.async_abort(reason="no_devices")
+        return await self.async_step_select_device()
 
     async def async_step_select_device(
         self, user_input: dict[str, Any] | None = None
@@ -231,6 +376,16 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
                     if len(selected_devices) == 1
                     else f"JD Smart ({len(selected_devices)} devices)"
                 )
+                target_entry = getattr(self, "_target_entry", None)
+                if target_entry is not None:
+                    return self.async_update_reload_and_abort(
+                        target_entry,
+                        data=_merge_entry_devices(
+                            target_entry.data,
+                            data,
+                            selected_devices,
+                        ),
+                    )
                 return self.async_create_entry(title=title, data=data)
 
         options = [
@@ -266,7 +421,9 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             data = {**entry.data, **_clean_input(user_input)}
             try:
-                await _validate_input(self.hass, data)
+                await _refresh_auth(self.hass, data)
+            except JdSmartTokenRefreshError:
+                errors["base"] = "token_refresh_failed"
             except JdSmartAuthError:
                 errors["base"] = "invalid_auth"
             except JdSmartError:
@@ -275,13 +432,27 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
                 LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                return self.async_update_reload_and_abort(entry, data=data)
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data=data,
+                    reason="auth_refreshed",
+                )
 
         return self.async_show_form(
             step_id="reauth_confirm",
             data_schema=_schema(entry.data),
             errors=errors,
         )
+
+    async def _async_update_auth_entries(self, auth_data: dict[str, Any]) -> None:
+        """Update auth fields for all existing entries and reload them."""
+        for entry in self._async_current_entries():
+            data = dict(entry.data)
+            for key in AUTH_KEYS:
+                if key in auth_data:
+                    data[key] = auth_data[key]
+            self.hass.config_entries.async_update_entry(entry, data=data)
+            await self.hass.config_entries.async_reload(entry.entry_id)
 
 
 def _device_label(device: JdSmartDevice) -> str:
@@ -291,12 +462,77 @@ def _device_label(device: JdSmartDevice) -> str:
     return f"{device.name}{suffix} ({device.feed_id})"
 
 
+def _entry_devices(data: dict[str, Any]) -> list[dict[str, str]]:
+    """Return configured devices from new or legacy entry data."""
+    if devices := data.get(CONF_DEVICES):
+        return devices
+    if feed_id := data.get(CONF_FEED_ID):
+        return [
+            {
+                CONF_FEED_ID: feed_id,
+                CONF_DEVICE_NAME: data.get(CONF_DEVICE_NAME, ""),
+            }
+        ]
+    return []
+
+
+def _merge_entry_devices(
+    entry_data: dict[str, Any],
+    auth_data: dict[str, Any],
+    selected_devices: list[JdSmartDevice],
+) -> dict[str, Any]:
+    """Merge selected devices into an existing entry."""
+    devices = {
+        device[CONF_FEED_ID]: dict(device)
+        for device in _entry_devices(entry_data)
+    }
+    for device in selected_devices:
+        devices[device.feed_id] = {
+            CONF_FEED_ID: device.feed_id,
+            CONF_DEVICE_NAME: device.name,
+        }
+
+    merged_devices = list(devices.values())
+    first_device = merged_devices[0]
+    data = {
+        **entry_data,
+        **{key: auth_data[key] for key in AUTH_KEYS if key in auth_data},
+        CONF_FEED_ID: first_device[CONF_FEED_ID],
+        CONF_DEVICE_NAME: first_device.get(CONF_DEVICE_NAME, ""),
+        CONF_DEVICES: merged_devices,
+    }
+    return data
+
+
+def _primary_entry(entries):
+    """Return the entry used for account-level add-service actions."""
+    return entries[0] if entries else None
+
+
+def _auth_changed(old_data: dict[str, Any], new_data: dict[str, Any]) -> bool:
+    """Return whether auth fields changed."""
+    return any(old_data.get(key) != new_data.get(key) for key in AUTH_KEYS)
+
+
 def _configured_feed_ids(entries) -> set[str]:
     """Return feed IDs already configured in existing entries."""
     feed_ids: set[str] = set()
     for entry in entries:
-        if devices := entry.data.get(CONF_DEVICES):
-            feed_ids.update(device[CONF_FEED_ID] for device in devices)
-        elif feed_id := entry.data.get(CONF_FEED_ID):
-            feed_ids.add(feed_id)
+        feed_ids.update(device[CONF_FEED_ID] for device in _entry_devices(entry.data))
     return feed_ids
+
+
+def _notify_token_refresh_failed(hass: HomeAssistant, err: Exception) -> None:
+    """Create a persistent notification for token refresh failures."""
+    reason = str(err) or err.__class__.__name__
+    LOGGER.error("JD Smart token refresh failed: %s", reason)
+    persistent_notification.async_create(
+        hass,
+        (
+            "JD Smart failed to refresh authentication. "
+            f"Reason: {reason}. "
+            "Open Settings > Devices & services and update JD Smart authentication."
+        ),
+        title="JD Smart authentication refresh failed",
+        notification_id=f"{DOMAIN}_token_refresh_failed",
+    )

@@ -152,8 +152,9 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
         async with self._token_refresh_lock:
             try:
                 new_tgt, new_cookie = await self.client.async_refresh_token()
-            except JdSmartTokenRefreshError:
+            except JdSmartTokenRefreshError as err:
                 LOGGER.exception("JD Smart token refresh failed")
+                self._async_create_token_refresh_failed_notification(err)
                 raise
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
@@ -189,6 +190,22 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
             ),
             title="JD Smart authentication required",
             notification_id=f"{DOMAIN}_{self.feed_id}_reauth",
+        )
+
+    @callback
+    def _async_create_token_refresh_failed_notification(self, err: Exception) -> None:
+        """Create a persistent notification for token refresh failures."""
+        reason = str(err) or err.__class__.__name__
+        persistent_notification.async_create(
+            self.hass,
+            (
+                "JD Smart failed to refresh authentication. "
+                f"Device: {self.device_name or self.feed_id}. "
+                f"Reason: {reason}. "
+                "Open Settings > Devices & services and update JD Smart authentication."
+            ),
+            title="JD Smart authentication refresh failed",
+            notification_id=f"{DOMAIN}_{self.feed_id}_token_refresh_failed",
         )
 
     def async_shutdown(self) -> None:

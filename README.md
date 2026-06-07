@@ -41,6 +41,10 @@ Install it from HACS, restart Home Assistant, then add the integration from:
 Settings -> Devices & services -> Add integration -> JD Smart
 ```
 
+When JD Smart is already configured, adding the integration again first asks
+whether to manually enter authentication data, refresh authentication, or add
+more devices.
+
 ### Manual
 
 Copy the integration into your Home Assistant configuration directory:
@@ -108,7 +112,8 @@ The `plat_version` query parameter and `appplatformversion` request header.
 
 `channel`
 
-The `channel` query parameter.
+The `channel` query parameter in the captured request URL, for example
+`channel=76161171`. Use the value from your working capture.
 
 `user_agent`
 

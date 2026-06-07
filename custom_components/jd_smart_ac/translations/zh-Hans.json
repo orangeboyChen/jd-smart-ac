@@ -2,14 +2,23 @@
     "config": {
         "abort": {
             "already_configured": "设备已经配置",
+            "auth_refreshed": "京东小家鉴权信息刷新成功。",
+            "auth_updated": "京东小家鉴权信息更新成功。",
             "no_devices": "没有发现新的空调设备。已配置的设备会被隐藏。"
         },
         "error": {
             "cannot_connect": "连接失败",
             "invalid_auth": "认证无效",
+            "token_refresh_failed": "鉴权刷新失败。请查看通知中的详细原因，或手动填写新的鉴权信息。",
             "unknown": "未知错误"
         },
         "step": {
+            "action": {
+                "data": {
+                    "action": "操作"
+                },
+                "description": "选择要继续执行的京东小家操作。"
+            },
             "reauth_confirm": {
                 "data": {
                     "app_version": "应用版本",
@@ -60,6 +69,15 @@
                     "selected_devices": "设备"
                 },
                 "description": "选择一个或多个要添加的空调设备。已配置的设备会被隐藏。"
+            }
+        }
+    },
+    "selector": {
+        "action": {
+            "options": {
+                "add_device": "添加设备",
+                "manual_auth": "手动填写鉴权信息",
+                "refresh_auth": "刷新鉴权信息"
             }
         }
     },

@@ -41,6 +41,8 @@ Integration
 设置 -> 设备与服务 -> 添加集成 -> 京东小家
 ```
 
+如果已经配置过京东小家，再次添加集成时会先让你选择：手动填写鉴权信息、刷新鉴权信息，或添加更多设备。
+
 ### 手动安装
 
 把本仓库中的集成复制到 Home Assistant 配置目录：
@@ -105,7 +107,7 @@ https://api.smart.jd.com/c/service/integration/v1/getDeviceSnapshot_v1
 
 `channel`
 
-请求 URL 中的 `channel` 参数。
+抓包请求 URL 中的 `channel` 参数，例如 `channel=76161171`。请使用可用抓包中的原值。
 
 `user_agent`
 
