@@ -3,7 +3,7 @@
 from datetime import timedelta
 import logging
 
-DOMAIN = "jd_smart_ac"
+DOMAIN = "jd_smart"
 LOGGER = logging.getLogger(__package__)
 
 DEFAULT_SCAN_INTERVAL = timedelta(seconds=60)

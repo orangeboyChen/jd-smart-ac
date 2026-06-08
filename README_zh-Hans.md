@@ -26,7 +26,7 @@
 在 HACS 中添加自定义仓库：
 
 ```text
-https://github.com/orangeboyChen/jd-smart-ac
+https://github.com/orangeboyChen/ha-jd-smart
 ```
 
 类型选择：
@@ -48,7 +48,7 @@ Integration
 把本仓库中的集成复制到 Home Assistant 配置目录：
 
 ```text
-config/custom_components/jd_smart_ac/
+config/custom_components/jd_smart/
 ```
 
 重启 Home Assistant，然后进入：

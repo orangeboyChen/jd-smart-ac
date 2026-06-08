@@ -1,12 +1,12 @@
 {
-  "domain": "jd_smart_ac",
+  "domain": "jd_smart",
   "name": "JD Smart",
   "codeowners": ["@orangeboyChen"],
   "config_flow": true,
-  "documentation": "https://github.com/orangeboyChen/jd-smart-ac",
+  "documentation": "https://github.com/orangeboyChen/ha-jd-smart",
   "integration_type": "device",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/orangeboyChen/jd-smart-ac/issues",
+  "issue_tracker": "https://github.com/orangeboyChen/ha-jd-smart/issues",
   "requirements": ["cryptography>=42.0.0"],
   "version": "0.1.0"
 }

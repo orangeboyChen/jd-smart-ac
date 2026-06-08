@@ -26,7 +26,7 @@ This repository is for users who own an air conditioner controlled through the J
 Add this repository as a HACS custom repository:
 
 ```text
-https://github.com/orangeboyChen/jd-smart-ac
+https://github.com/orangeboyChen/ha-jd-smart
 ```
 
 Repository type:
@@ -50,7 +50,7 @@ more devices.
 Copy the integration into your Home Assistant configuration directory:
 
 ```text
-config/custom_components/jd_smart_ac/
+config/custom_components/jd_smart/
 ```
 
 Restart Home Assistant, then add the integration from:
