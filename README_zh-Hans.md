@@ -122,3 +122,9 @@ https://api.smart.jd.com/c/service/integration/v1/getDeviceSnapshot_v1
 选择实体用于左右风。
 
 传感器实体包括当前温度、当前湿度，以及 TVOC、运行时间、蜂鸣器原始值、MDP 模式、保护状态等诊断值。
+
+## 免责声明
+
+本项目是非官方集成，与京东、京东小家、Home Assistant 均无任何关联。使用本集成
+可能违反京东小家的服务条款，请自行评估风险并自行承担。完整免责声明见
+[DISCLAIMER.md](DISCLAIMER.md)。

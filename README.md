@@ -128,3 +128,10 @@ Switch entities include backlight, display, and powerful mode.
 The select entity controls horizontal swing direction.
 
 Sensor entities include current temperature, current humidity, TVOC, runtime counters, speaker raw value, MDP mode, protection state, and other diagnostic values.
+
+## Disclaimer
+
+This is an unofficial integration and is not affiliated with JD.com, JD Smart, or
+Home Assistant. Use of this integration may violate the JD Smart / JD Xiaojia
+Terms of Service. Use it at your own risk. See [DISCLAIMER.md](DISCLAIMER.md)
+for the full disclaimer.
